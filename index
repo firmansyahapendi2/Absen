@@ -1,0 +1,1937 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="theme-color" content="#0077E6" />
+  <title>BAPELTAN Absensi - Sistem Absensi Foto & GPS</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+          },
+          colors: {
+            bapeltan: {
+              50: '#eff8ff',
+              100: '#dbeefe',
+              500: '#0077E6',
+              600: '#0062c4',
+              700: '#004ea0',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    html {
+      touch-action: manipulation;
+      -webkit-text-size-adjust: 100%;
+    }
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #f1f5f9;
+      -webkit-tap-highlight-color: transparent;
+      overscroll-behavior-y: contain;
+    }
+    .mirror-video {
+      transform: scaleX(-1);
+      -webkit-transform: scaleX(-1);
+    }
+    /* Custom scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #f1f5f9;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 999px;
+    }
+    @keyframes pulse-ring {
+      0% { transform: scale(0.85); opacity: 0.8; }
+      70% { transform: scale(1.6); opacity: 0; }
+      100% { transform: scale(1.6); opacity: 0; }
+    }
+    .gps-pulse::before {
+      content: '';
+      position: absolute;
+      inset: -4px;
+      border-radius: 9999px;
+      background-color: #0077E6;
+      animation: pulse-ring 2s infinite;
+    }
+  </style>
+</head>
+<body class="text-slate-800 min-h-screen flex flex-col">
+
+  <!-- Toast Notification Container -->
+  <div id="toastContainer" style="top: calc(1rem + env(safe-area-inset-top, 0px));" class="fixed left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 w-[92%] max-w-md pointer-events-none"></div>
+
+  <script>
+    // Membuat emblem default BAPELTAN di canvas agar selalu tersedia & bisa digambar ke foto hasil
+    window.createDefaultBapeltanLogoDataUrl = function () {
+      const c = document.createElement('canvas');
+      c.width = 240;
+      c.height = 240;
+      const g = c.getContext('2d');
+
+      g.clearRect(0, 0, 240, 240);
+      g.fillStyle = '#ffffff';
+      g.beginPath();
+      g.arc(120, 120, 114, 0, Math.PI * 2);
+      g.fill();
+
+      // Cincin gradasi hijau - biru - kuning
+      const ringGrad = g.createLinearGradient(20, 20, 220, 220);
+      ringGrad.addColorStop(0, '#0ea5e9');
+      ringGrad.addColorStop(0.5, '#16a34a');
+      ringGrad.addColorStop(1, '#eab308');
+      g.lineWidth = 10;
+      g.strokeStyle = ringGrad;
+      g.beginPath();
+      g.arc(120, 120, 110, 0, Math.PI * 2);
+      g.stroke();
+
+      // Teks DINASTPH JABAR di bagian atas
+      g.textAlign = 'center';
+      g.font = '900 22px Inter, sans-serif';
+      g.fillStyle = '#ea580c';
+      g.fillText('DINAS', 92, 62);
+      g.fillStyle = '#15803d';
+      g.fillText('TPH', 146, 62);
+      g.font = '800 14px Inter, sans-serif';
+      g.fillStyle = '#166534';
+      g.fillText('JABAR', 152, 78);
+
+      // Aksara/lidah api kuning & lengkung hijau kiri
+      g.fillStyle = '#facc15';
+      g.beginPath();
+      g.moveTo(46, 138);
+      g.quadraticCurveTo(36, 98, 56, 72);
+      g.quadraticCurveTo(64, 106, 56, 138);
+      g.closePath();
+      g.fill();
+
+      g.strokeStyle = '#16a34a';
+      g.lineWidth = 12;
+      g.lineCap = 'round';
+      g.beginPath();
+      g.arc(54, 134, 24, Math.PI * 0.3, Math.PI * 1.65);
+      g.stroke();
+
+      // Tulisan utama "Bapeltan"
+      g.font = '900 46px Inter, sans-serif';
+      g.lineWidth = 5;
+      g.strokeStyle = '#15803d';
+      g.strokeText('Bapeltan', 124, 148);
+      g.fillStyle = '#1d4ed8';
+      g.fillText('Bapeltan', 124, 148);
+
+      // Subjudul instansi di bawah
+      g.font = '800 12px Inter, sans-serif';
+      g.fillStyle = '#15803d';
+      g.fillText('Tanaman Pangan & Hortikultura', 120, 174);
+
+      return c.toDataURL('image/png');
+    };
+
+    window.syncLogoToAllTargets = function (srcUrl) {
+      if (!srcUrl) return;
+      const targets = ['appLogoImg', 'overlayLogoImg', 'dateBannerLogoImg'];
+      targets.forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) {
+          if (el.getAttribute('src') !== srcUrl) {
+            el.setAttribute('src', srcUrl);
+          }
+          el.classList.remove('hidden');
+          if (el.parentElement) el.parentElement.classList.remove('hidden');
+        }
+      });
+
+      const fallbackIcon = document.getElementById('appLogoFallbackIcon');
+      if (fallbackIcon) fallbackIcon.classList.add('hidden');
+
+      const imgObj = new Image();
+      imgObj.crossOrigin = 'anonymous';
+      imgObj.onload = () => {
+        if (typeof STATE !== 'undefined') {
+          STATE.logoImageObj = imgObj;
+        }
+      };
+      imgObj.src = srcUrl;
+    };
+
+    // Didefinisikan lebih awal agar selalu tersedia saat event onload/onerror pada <img> logo dipicu
+    window.handleLogoLoaded = function (imgEl) {
+      if (!imgEl || !imgEl.complete || imgEl.naturalWidth === 0) {
+        window.handleLogoError(imgEl);
+        return;
+      }
+      imgEl.classList.remove('hidden');
+      if (imgEl.parentElement) imgEl.parentElement.classList.remove('hidden');
+      const fallbackIcon = document.getElementById('appLogoFallbackIcon');
+      if (fallbackIcon) fallbackIcon.classList.add('hidden');
+
+      if (typeof STATE !== 'undefined') {
+        const canvasLogo = new Image();
+        canvasLogo.crossOrigin = 'anonymous';
+        canvasLogo.onload = () => {
+          STATE.logoImageObj = canvasLogo;
+        };
+        canvasLogo.src = imgEl.src;
+      }
+    };
+
+    window.handleLogoError = function (imgEl) {
+      let savedLogo = '';
+      try {
+        savedLogo = localStorage.getItem('bapeltan_custom_logo') || '';
+      } catch (e) {
+        savedLogo = '';
+      }
+      const fallbackUrl = savedLogo || window.createDefaultBapeltanLogoDataUrl();
+      if (imgEl && imgEl.dataset.fallbackApplied !== '1') {
+        imgEl.dataset.fallbackApplied = '1';
+        imgEl.src = fallbackUrl;
+        imgEl.classList.remove('hidden');
+        if (imgEl.parentElement) imgEl.parentElement.classList.remove('hidden');
+      }
+      window.syncLogoToAllTargets(fallbackUrl);
+    };
+
+    window.applyLogoDataUrl = function (dataUrl) {
+      window.syncLogoToAllTargets(dataUrl);
+    };
+
+    window.handleCustomLogoUpload = function (event) {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+      if (!file.type.startsWith('image/')) {
+        if (typeof showToast === 'function') showToast('Pilih file gambar logo yang valid.', 'error');
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = function (e) {
+        const dataUrl = e.target.result;
+        window.applyLogoDataUrl(dataUrl);
+        try {
+          localStorage.setItem('bapeltan_custom_logo', dataUrl);
+        } catch (err) {
+          console.warn('Logo terlalu besar untuk disimpan di localStorage:', err);
+        }
+        if (typeof showToast === 'function') showToast('Logo BAPELTAN berhasil diperbarui!', 'success');
+      };
+      reader.readAsDataURL(file);
+    };
+  </script>
+
+  <!-- Top App Header -->
+  <header style="padding-top: env(safe-area-inset-top, 0px);" class="sticky top-0 z-30 bg-[#0077E6] text-white shadow-md">
+    <div class="max-w-[430px] mx-auto px-3.5 py-2.5 flex items-center justify-between gap-2">
+      <div class="flex items-center gap-2.5 min-w-0">
+        <label title="Klik untuk ganti file logo BAPELTAN" class="w-9 h-9 rounded-full bg-white flex items-center justify-center border-2 border-white/80 shadow-inner overflow-hidden cursor-pointer shrink-0 relative group">
+          <img id="appLogoImg" src="images (2).jfif" alt="Logo BAPELTAN" onload="handleLogoLoaded(this)" onerror="handleLogoError(this)" class="w-full h-full object-contain p-0.5" />
+          <i id="appLogoFallbackIcon" data-lucide="shield-check" class="hidden w-5 h-5 text-[#0077E6]"></i>
+          <input type="file" accept="image/*" onchange="handleCustomLogoUpload(event)" class="hidden" />
+        </label>
+        <div class="min-w-0">
+          <h1 class="font-extrabold text-sm tracking-tight leading-none truncate">BAPELTAN <span class="text-amber-300">Absensi</span></h1>
+          <p class="text-[10px] text-blue-100 mt-0.5 font-medium truncate">Foto 100% Akurat &amp; Terverifikasi GPS</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-1 shrink-0">
+        <button onclick="switchTab('history')" id="navHistoryBtn" class="relative px-2.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 transition flex items-center gap-1 text-[11px] font-semibold">
+          <i data-lucide="history" class="w-3.5 h-3.5"></i>
+          <span>Riwayat</span>
+          <span id="historyBadge" class="hidden bg-amber-400 text-slate-900 text-[10px] font-extrabold px-1.5 py-0.2 rounded-full">0</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main style="padding-bottom: calc(5rem + env(safe-area-inset-bottom, 0px));" class="flex-1 max-w-[430px] w-full mx-auto px-3 py-3 space-y-3">
+
+    <!-- Navigation Tabs (Kamera vs Riwayat) -->
+    <div class="grid grid-cols-2 bg-white p-1 rounded-2xl shadow-sm border border-slate-200/80">
+      <button id="tabCamera" onclick="switchTab('camera')" class="py-2 px-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 bg-[#0077E6] text-white shadow-sm transition">
+        <i data-lucide="camera" class="w-3.5 h-3.5"></i>
+        Ambil Absen
+      </button>
+      <button id="tabHistory" onclick="switchTab('history')" class="py-2 px-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 text-slate-600 hover:bg-slate-50 transition">
+        <i data-lucide="clipboard-list" class="w-3.5 h-3.5"></i>
+        Riwayat &amp; Share WA
+      </button>
+    </div>
+
+    <!-- VIEW 1: KAMERA ABSENSI -->
+    <div id="viewCamera" class="space-y-3">
+
+      <!-- Card Identitas Pegawai (Collapsible) -->
+      <div class="bg-white rounded-2xl p-3 shadow-sm border border-slate-200/80">
+        <div class="flex items-center justify-between cursor-pointer" onclick="toggleProfileForm()">
+          <div class="flex items-center gap-2 min-w-0">
+            <div class="w-8 h-8 rounded-full bg-blue-50 text-[#0077E6] flex items-center justify-center font-bold text-sm border border-blue-100 shrink-0">
+              <i data-lucide="user-check" class="w-4 h-4"></i>
+            </div>
+            <div class="min-w-0">
+              <p class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Identitas Pegawai</p>
+              <p id="displayUserSummary" class="text-xs font-bold text-slate-800 truncate">Ketuk untuk isi Nama &amp; Unit Kerja</p>
+            </div>
+          </div>
+          <button type="button" class="text-[11px] font-semibold text-[#0077E6] bg-blue-50 px-2 py-1 rounded-xl flex items-center gap-1 shrink-0">
+            <span id="profileToggleText">Ubah</span>
+            <i data-lucide="chevron-down" id="profileChevron" class="w-3.5 h-3.5 transition-transform"></i>
+          </button>
+        </div>
+
+        <div id="profileFormFields" class="mt-3 pt-3 border-t border-slate-100 space-y-2.5 hidden">
+          <div>
+            <label class="block text-[11px] font-bold text-slate-600 mb-1">Nama Pegawai (User)</label>
+            <input type="text" id="inputNama" placeholder="Contoh: Ahmad Fauzi, S.Pt" oninput="saveProfile()" class="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0077E6] focus:bg-white transition" />
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold text-slate-600 mb-1">Unit Kerja</label>
+            <input type="text" id="inputUnitKerja" placeholder="Contoh: Balai Pelatihan Tanaman Pangan & Hortikultura" oninput="saveProfile()" class="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0077E6] focus:bg-white transition" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Pilihan Status Absen Masuk / Pulang & Pengaturan Jam Masuk -->
+      <div class="bg-white rounded-2xl p-3 shadow-sm border border-slate-200/80 space-y-2.5">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold text-slate-600 flex items-center gap-1.5">
+            <i data-lucide="clock" class="w-3.5 h-3.5 text-[#0077E6]"></i>
+            Jenis Kehadiran
+          </span>
+          <span id="liveClockBadge" class="text-[11px] font-extrabold bg-slate-100 text-slate-700 px-2 py-0.5 rounded-lg font-mono">00:00:00</span>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2">
+          <button type="button" id="btnModeMasuk" onclick="setAttendanceType('Absen Masuk')" class="py-2.5 px-2.5 rounded-xl border-2 border-emerald-600 bg-emerald-600 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm transition active:scale-98">
+            <i data-lucide="log-in" class="w-4 h-4"></i>
+            Absen Masuk
+          </button>
+          <button type="button" id="btnModePulang" onclick="setAttendanceType('Absen Pulang')" class="py-2.5 px-2.5 rounded-xl border-2 border-slate-200 bg-white text-slate-700 font-bold text-xs flex items-center justify-center gap-1.5 hover:bg-slate-50 transition active:scale-98">
+            <i data-lucide="log-out" class="w-4 h-4"></i>
+            Absen Pulang
+          </button>
+        </div>
+
+        <!-- Info Sudah Absen Masuk Hari Ini -->
+        <div id="alreadyCheckedInNotice" class="hidden items-center justify-between gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2 text-[11px] text-emerald-800">
+          <span class="font-semibold">Anda sudah <strong>Absen Masuk</strong> hari ini (<strong id="recordedCheckInBadge">--:--</strong>). Menu otomatis ke <strong>Absen Pulang</strong>.</span>
+          <button type="button" onclick="resetTodayCheckIn()" class="font-bold text-emerald-700 underline shrink-0">Reset</button>
+        </div>
+
+        <!-- Pengaturan Jam Masuk untuk Perhitungan Durasi Kerja saat Absen Pulang -->
+        <div id="checkInTimeBox" class="bg-blue-50/80 border border-blue-200/80 rounded-xl p-2.5 flex items-center justify-between gap-2">
+          <div class="flex items-center gap-2">
+            <i data-lucide="briefcase" class="w-4 h-4 text-[#0077E6] shrink-0"></i>
+            <div>
+              <p class="text-[11px] font-bold text-slate-700">Jam Masuk Hari Ini</p>
+              <p class="text-[10px] text-slate-500" id="durationPreviewText">Otomatis hitung lama waktu kerja saat Absen Pulang</p>
+            </div>
+          </div>
+          <input type="time" id="inputCheckInTime" value="06:35" onchange="saveCustomCheckInTime()" class="bg-white border border-blue-300 text-slate-800 font-extrabold text-sm rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[#0077E6]" />
+        </div>
+      </div>
+
+      <!-- Viewfinder Kamera dengan Live Overlay Persis Referensi -->
+      <div class="bg-slate-900 rounded-3xl overflow-hidden shadow-lg border border-slate-800 relative">
+        <!-- Aspect Ratio 4:5 Mobile Portrait Container -->
+        <div id="cameraContainer" class="relative w-full aspect-[4/5] bg-slate-950 overflow-hidden flex items-center justify-center">
+          <!-- Video Stream -->
+          <video id="videoPreview" autoplay playsinline muted class="w-full h-full object-cover mirror-video"></video>
+
+          <!-- Fallback Image if user uploads photo or camera unavailable -->
+          <img id="uploadedFallbackImg" class="hidden w-full h-full object-cover" alt="Preview Foto" />
+
+          <!-- Camera Error / Permission State -->
+          <div id="cameraFallbackUI" class="hidden absolute inset-0 bg-slate-900/95 flex flex-col items-center justify-center p-6 text-center z-20">
+            <div class="w-14 h-14 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center mb-3">
+              <i data-lucide="camera-off" class="w-7 h-7"></i>
+            </div>
+            <h3 class="text-white font-bold text-base mb-1">Izinkan Kamera di Browser</h3>
+            <p id="cameraErrorMsg" class="text-slate-300 text-xs mb-3 leading-relaxed">Ketuk tombol <strong>Izinkan Kamera di Browser</strong> di bawah, lalu pilih <strong>Izinkan / Allow</strong> pada popup browser. Jika pernah diblokir, buka ikon kunci/pengaturan alamat di browser dan ubah <strong>Kamera</strong> menjadi <strong>Izinkan</strong>.</p>
+            <div class="flex flex-wrap justify-center gap-2">
+              <button type="button" onclick="allowBrowserCameraNow()" class="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold rounded-xl flex items-center gap-1.5 shadow">
+                <i data-lucide="shield-check" class="w-3.5 h-3.5"></i> Izinkan Kamera di Browser
+              </button>
+              <button type="button" onclick="startCamera()" class="px-4 py-2.5 bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold rounded-xl flex items-center gap-1.5">
+                <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Coba Lagi
+              </button>
+              <label class="px-4 py-2.5 bg-[#0077E6] hover:bg-blue-600 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer shadow">
+                <i data-lucide="image-plus" class="w-3.5 h-3.5"></i> Ambil / Pilih Foto
+                <input type="file" accept="image/*" capture="user" onchange="handleFileUpload(event)" class="hidden" />
+              </label>
+            </div>
+          </div>
+
+          <!-- LIVE OVERLAY PREVIEW (Meniru hasil akhir Timemark / BAPELTAN) -->
+          <div class="absolute inset-0 pointer-events-none flex flex-col justify-between z-10">
+            <!-- Top Row: Mini Map & Brand Watermark -->
+            <div class="p-3 flex items-start justify-between gap-2">
+              <!-- Live Mini Map Box -->
+              <div class="w-24 h-24 sm:w-28 sm:h-28 rounded-xl overflow-hidden bg-[#e8f0e8] border-2 border-white/80 shadow-md relative shrink-0">
+                <canvas id="liveMiniMapCanvas" width="220" height="220" class="w-full h-full object-cover"></canvas>
+              </div>
+
+              <!-- Top Right Brand + Logo -->
+              <div class="flex items-center gap-2 text-right drop-shadow-[0_1px_3px_rgba(0,0,0,0.85)]">
+                <div>
+                  <div class="font-extrabold text-sm sm:text-base tracking-tight leading-none">
+                    <span class="text-amber-400">BAPELTAN</span> <span class="text-white">Absensi</span>
+                  </div>
+                  <div class="text-[10px] text-white/95 font-medium mt-0.5">Foto 100% akurat</div>
+                </div>
+                <div class="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-white/95 p-0.5 border border-white shadow-md flex items-center justify-center overflow-hidden shrink-0">
+                  <img id="overlayLogoImg" src="images (2).jfif" alt="Logo BAPELTAN" onload="handleLogoLoaded(this)" onerror="this.parentElement.classList.add('hidden')" class="w-full h-full object-contain rounded-full" />
+                </div>
+              </div>
+            </div>
+
+            <!-- Middle Right Vertical Verification Text -->
+            <div class="absolute right-1.5 top-1/2 -translate-y-1/2 origin-right -rotate-90 translate-x-[42%] opacity-80 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">
+              <span id="liveVerifyCode" class="text-[9px] font-mono tracking-widest text-white font-semibold uppercase">XUBELTG2G69XG9 &nbsp; BAPELTAN Verified</span>
+            </div>
+
+            <!-- Bottom Overlay Info + Footer Banner -->
+            <div class="w-full">
+              <div class="px-3 pb-2.5 bg-gradient-to-t from-black/65 via-black/30 to-transparent pt-8 flex items-end justify-between gap-2.5">
+                <div class="min-w-0 flex-1">
+                  <!-- Badge Status + Jam Besar -->
+                  <div class="inline-flex items-stretch rounded-lg overflow-hidden shadow-md mb-2">
+                    <span id="overlayStatusBadge" class="bg-emerald-600 text-white font-bold text-xs sm:text-sm px-2.5 py-1 flex items-center transition-colors">
+                      Absen Masuk
+                    </span>
+                    <span id="overlayTimeBig" class="bg-white text-slate-950 font-black text-base sm:text-lg px-2.5 py-0.5 flex items-center tracking-tight">
+                      06:35
+                    </span>
+                  </div>
+
+                  <!-- Tanggal & Alamat dengan garis vertikal -->
+                  <div id="overlayAccentBorder" class="border-l-[3px] border-emerald-600 pl-2.5 space-y-0.5 drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)] transition-colors">
+                    <p id="overlayDateText" class="text-white font-bold text-xs sm:text-sm leading-snug">Senin, 23 November 2026</p>
+                    <p id="overlayAddressText" class="text-white/95 text-[11px] sm:text-xs leading-snug line-clamp-2">Mendeteksi lokasi GPS...</p>
+                    <p id="overlayUserText" class="text-amber-200 font-semibold text-[10px] sm:text-[11px] hidden"></p>
+                  </div>
+
+                  <!-- Verified Shield Line -->
+                  <div class="flex items-center gap-1 mt-1.5 text-white/90 text-[10px] drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">
+                    <i data-lucide="shield-check" class="w-3.5 h-3.5 text-white"></i>
+                    <span>BAPELTAN Absensi menjamin keaslian waktu</span>
+                  </div>
+                </div>
+
+                <!-- Logo di Sebelah Kanan Banner Tanggal & Keterangan Absen (Bisa Diubah) -->
+                <label title="Klik untuk ubah logo di banner tanggal & foto" class="pointer-events-auto w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-white/95 p-0.5 border-2 border-white shadow-lg flex items-center justify-center overflow-hidden shrink-0 cursor-pointer active:scale-95 transition">
+                  <img id="dateBannerLogoImg" src="images (2).jfif" alt="Logo Banner Tanggal" onload="handleLogoLoaded(this)" onerror="this.parentElement.classList.add('hidden')" class="w-full h-full object-contain rounded-full" />
+                  <input type="file" accept="image/*" onchange="handleCustomLogoUpload(event)" class="hidden" />
+                </label>
+              </div>
+
+              <!-- Footer Banner (Hijau untuk Absen Masuk, Biru untuk Absen Pulang) -->
+              <div id="overlayFooterBanner" class="bg-emerald-600 text-white px-3.5 py-2 flex items-center justify-between transition-colors hidden">
+                <div id="overlayLeftBox">
+                  <p id="overlayLeftLabel" class="text-[10px] text-white/85 font-medium leading-none">Jam Masuk</p>
+                  <p id="overlayLeftValue" class="text-sm sm:text-base font-extrabold tracking-tight mt-0.5">06:35</p>
+                </div>
+                <div id="overlayRightBox" class="text-right hidden">
+                  <p class="text-[10px] text-white/85 font-medium leading-none">Lama Waktu Kerja</p>
+                  <p id="overlayWorkDuration" class="text-sm sm:text-base font-extrabold tracking-tight mt-0.5">0 h 0 mnt</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Top Floating Camera Controls -->
+          <div class="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 bg-black/50 backdrop-blur-md p-1.5 rounded-full border border-white/15">
+            <button type="button" id="btnAllowBrowserCamera" onclick="allowBrowserCameraNow()" aria-label="Izinkan Kamera di Browser" title="Izinkan / Aktifkan Kamera di Browser" class="px-2.5 py-1 rounded-full bg-emerald-600/90 hover:bg-emerald-500 text-white text-[10px] font-bold flex items-center gap-1 transition active:scale-95">
+              <i data-lucide="camera" class="w-3.5 h-3.5"></i>
+              <span id="cameraPermissionLabel">Izinkan Kamera</span>
+            </button>
+            <button type="button" id="btnSwitchCamera" onclick="switchCameraFacing()" aria-label="Ganti Kamera Depan atau Belakang" title="Ganti Kamera Depan / Belakang" class="text-white hover:text-amber-300 p-1.5 rounded-full flex items-center justify-center transition active:scale-95">
+              <i data-lucide="refresh-ccw" class="w-4 h-4"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Bottom Camera Action Bar -->
+        <div class="bg-slate-900 px-3 py-3 flex items-center justify-between gap-2.5">
+          <!-- Upload Fallback Button -->
+          <label title="Upload Foto dari Galeri / Kamera HP" class="w-11 h-11 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center justify-center cursor-pointer border border-slate-700 active:scale-95 transition shrink-0">
+            <i data-lucide="image" class="w-5 h-5"></i>
+            <input type="file" accept="image/*" capture="user" onchange="handleFileUpload(event)" class="hidden" />
+          </label>
+
+          <!-- Main Shutter Button -->
+          <button type="button" onclick="captureAttendancePhoto()" id="btnCapture" class="flex-1 py-3 px-4 rounded-2xl bg-[#0077E6] hover:bg-blue-500 active:scale-95 text-white font-extrabold text-xs sm:text-sm shadow-lg shadow-blue-600/30 flex items-center justify-center gap-2 transition">
+            <div class="w-6 h-6 rounded-full bg-white text-[#0077E6] flex items-center justify-center shrink-0">
+              <i data-lucide="camera" class="w-3.5 h-3.5"></i>
+            </div>
+            <span>Ambil Foto Absen</span>
+          </button>
+
+          <!-- Refresh GPS Button -->
+          <button type="button" onclick="refreshLocation(true)" title="Perbarui Lokasi GPS" class="w-11 h-11 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center justify-center border border-slate-700 active:scale-95 transition shrink-0 relative">
+            <span id="gpsIndicatorDot" class="w-2.5 h-2.5 rounded-full bg-emerald-400 absolute top-2 right-2"></span>
+            <i data-lucide="map-pin" class="w-5 h-5"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Lokasi GPS & Alamat Manual Override Card -->
+      <div class="bg-white rounded-2xl p-3 shadow-sm border border-slate-200/80 space-y-1.5">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <span class="relative flex h-2.5 w-2.5 gps-pulse">
+              <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#0077E6]"></span>
+            </span>
+            <span class="text-xs font-bold text-slate-700">Titik Lokasi GPS</span>
+            <span id="gpsCoordsBadge" class="text-[10px] font-mono bg-slate-100 text-slate-500 px-2 py-0.5 rounded-md">Mencari...</span>
+          </div>
+          <button type="button" onclick="toggleEditAddress()" class="text-xs font-semibold text-[#0077E6] hover:underline">
+            Edit Alamat
+          </button>
+        </div>
+        <p id="cardAddressDisplay" class="text-xs text-slate-600 leading-relaxed font-medium">Sedang mengambil koordinat dan nama jalan...</p>
+
+        <!-- Manual Address Editor (Hidden by default) -->
+        <div id="editAddressBox" class="hidden pt-2 border-t border-slate-100 space-y-2">
+          <textarea id="inputManualAddress" rows="2" oninput="updateManualAddress()" placeholder="Masukkan alamat lengkap lokasi tugas..." class="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0077E6]"></textarea>
+          <div class="flex justify-end gap-2">
+            <button type="button" onclick="refreshLocation(true)" class="text-[11px] font-bold text-slate-600 bg-slate-100 px-3 py-1.5 rounded-lg">Gunakan GPS Otomatis</button>
+            <button type="button" onclick="toggleEditAddress()" class="text-[11px] font-bold text-white bg-[#0077E6] px-3 py-1.5 rounded-lg">Selesai</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- VIEW 2: RIWAYAT ABSENSI -->
+    <div id="viewHistory" class="hidden space-y-3">
+      <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-200/80 flex items-center justify-between">
+        <div>
+          <h2 class="font-extrabold text-sm text-slate-800">Riwayat Absensi Tersimpan</h2>
+          <p class="text-xs text-slate-500">Klik foto untuk mengunduh atau share ulang ke WhatsApp</p>
+        </div>
+        <button onclick="clearAllHistory()" class="text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 px-3 py-1.5 rounded-xl transition">
+          Hapus Semua
+        </button>
+      </div>
+
+      <div id="historyListContainer" class="space-y-3">
+        <!-- Rendered by JS -->
+      </div>
+    </div>
+
+  </main>
+
+  <!-- MODAL HASIL FOTO & SHARE WHATSAPP -->
+  <div id="resultModal" style="padding-top: calc(0.75rem + env(safe-area-inset-top, 0px)); padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm hidden flex items-center justify-center p-3 overflow-y-auto">
+    <div class="bg-white rounded-3xl max-w-md w-full overflow-hidden shadow-2xl border border-slate-200 my-auto animate-in fade-in zoom-in-95 duration-200">
+      <!-- Modal Header -->
+      <div class="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+          <h3 class="font-extrabold text-sm text-slate-800">Foto Absensi Siap Dikirim</h3>
+        </div>
+        <button onclick="closeModal('resultModal')" class="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <!-- Result Watermarked Photo Preview -->
+      <div class="p-3.5 bg-slate-900 flex justify-center">
+        <img id="finalWatermarkedImg" src="" alt="Hasil Absensi BAPELTAN" class="max-h-[55vh] w-auto rounded-xl shadow-lg border border-white/10 object-contain" />
+      </div>
+
+      <!-- Action Buttons: Share WhatsApp & Download -->
+      <div class="p-4 space-y-2.5 bg-white">
+        <button onclick="shareToWhatsApp()" class="w-full py-3.5 px-4 rounded-2xl bg-[#25D366] hover:bg-[#20bd5a] active:scale-98 text-white font-extrabold text-sm shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2.5 transition">
+          <i data-lucide="share-2" class="w-5 h-5"></i>
+          <span>Kirim Foto &amp; Laporan ke WhatsApp</span>
+        </button>
+
+        <div class="grid grid-cols-2 gap-2.5">
+          <button onclick="downloadCurrentPhoto()" class="py-2.5 px-3 rounded-xl bg-[#0077E6] hover:bg-blue-600 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition">
+            <i data-lucide="download" class="w-4 h-4"></i>
+            Simpan ke Galeri
+          </button>
+          <button onclick="shareTextOnlyWhatsApp()" class="py-2.5 px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold text-xs flex items-center justify-center gap-1.5 transition">
+            <i data-lucide="message-circle" class="w-4 h-4"></i>
+            Teks WA (Desktop)
+          </button>
+        </div>
+
+        <p class="text-[11px] text-center text-slate-400 pt-1">
+          Pada HP Android/iOS, tombol hijau otomatis melampirkan gambar hasil absen ke WhatsApp.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hidden High-Res Canvas for Final Watermark Generation -->
+  <canvas id="exportCanvas" class="hidden"></canvas>
+
+  <script>
+    // ==========================================
+    // STATE & KONFIGURASI APLIKASI
+    // ==========================================
+    const STATE = {
+      attendanceType: 'Absen Masuk', // 'Absen Masuk' | 'Absen Pulang'
+      isMirrored: true,
+      facingMode: 'user',
+      stream: null,
+      uploadedImageObj: null,
+      coords: {
+        lat: -6.8358,
+        lng: 107.2625,
+        accuracy: 15,
+        isLive: false
+      },
+      address: 'Neglasari, Kec. Bojongpicung, Kabupaten Cianjur, Jawa Barat 43283',
+      roadName: 'Jl. Moch Ali',
+      areaName: 'Bojongpicung',
+      verificationCode: generateVerificationCode(),
+      currentResultDataUrl: null,
+      currentResultRecord: null,
+      history: [],
+      logoImageObj: null,
+      autoCameraRetryBound: false,
+      isStartingCamera: false
+    };
+
+    const HARI_ID = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+    const BULAN_ID = [
+      'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+      'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+    ];
+
+    // ==========================================
+    // INISIALISASI SAAT HALAMAN DIMUAT
+    // ==========================================
+    window.addEventListener('DOMContentLoaded', () => {
+      lucide.createIcons();
+      if (!STATE.logoImageObj) {
+        const defaultLogo = window.createDefaultBapeltanLogoDataUrl();
+        window.syncLogoToAllTargets(defaultLogo);
+      }
+      loadLocalStorageData();
+      updateClockAndOverlays();
+      setInterval(updateClockAndOverlays, 1000);
+      drawMiniMap(document.getElementById('liveMiniMapCanvas'), STATE.coords.lat, STATE.coords.lng, STATE.roadName, STATE.areaName);
+      bindAlwaysAllowCameraListeners();
+      requestAlwaysAllowCamera(null, { silent: true });
+      refreshLocation(false);
+    });
+
+    function generateVerificationCode() {
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      let code = '';
+      for (let i = 0; i < 14; i++) {
+        code += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      return code;
+    }
+
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      const colors = {
+        success: 'bg-emerald-600 text-white',
+        error: 'bg-rose-600 text-white',
+        info: 'bg-slate-900 text-white'
+      };
+      toast.className = `${colors[type] || colors.info} px-4 py-2.5 rounded-2xl shadow-xl text-xs font-bold flex items-center justify-between gap-2 pointer-events-auto transition-all duration-300`;
+      toast.innerHTML = `<span>${message}</span>`;
+      container.appendChild(toast);
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(-8px)';
+        setTimeout(() => toast.remove(), 300);
+      }, 3200);
+    }
+
+    // ==========================================
+    // PENYIMPANAN LOKAL (PROFILE, JAM MASUK, RIWAYAT)
+    // ==========================================
+    function loadLocalStorageData() {
+      try {
+        const savedLogo = localStorage.getItem('bapeltan_custom_logo');
+        if (savedLogo) {
+          applyLogoDataUrl(savedLogo);
+        } else if (!STATE.logoImageObj) {
+          applyLogoDataUrl(window.createDefaultBapeltanLogoDataUrl());
+        }
+
+        const profile = JSON.parse(localStorage.getItem('bapeltan_profile') || '{}');
+        if (profile.nama) document.getElementById('inputNama').value = profile.nama;
+        if (profile.unitKerja) document.getElementById('inputUnitKerja').value = profile.unitKerja;
+        updateProfileSummary();
+
+        // Cek jam masuk hari ini
+        const todayKey = getTodayDateKey();
+        const savedCheckIn = JSON.parse(localStorage.getItem('bapeltan_checkin_' + todayKey) || 'null');
+        if (savedCheckIn && savedCheckIn.time) {
+          document.getElementById('inputCheckInTime').value = savedCheckIn.time;
+          applyCheckInLockState(true, savedCheckIn.time);
+          setAttendanceType('Absen Pulang');
+        }
+
+        // Load riwayat lokal saja
+        STATE.history = JSON.parse(localStorage.getItem('bapeltan_history') || '[]');
+        renderHistoryList();
+      } catch (e) {
+        console.error('Gagal memuat localStorage:', e);
+      }
+    }
+
+    function getTodayDateKey() {
+      const now = new Date();
+      return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    }
+
+    function saveProfile() {
+      const profile = {
+        nama: document.getElementById('inputNama').value.trim(),
+        unitKerja: document.getElementById('inputUnitKerja').value.trim()
+      };
+      localStorage.setItem('bapeltan_profile', JSON.stringify(profile));
+      updateProfileSummary();
+    }
+
+    function updateProfileSummary() {
+      const nama = document.getElementById('inputNama').value.trim();
+      const unitKerja = document.getElementById('inputUnitKerja').value.trim();
+      const summaryEl = document.getElementById('displayUserSummary');
+      const overlayUserEl = document.getElementById('overlayUserText');
+
+      if (nama && unitKerja) {
+        summaryEl.textContent = `${nama} • ${unitKerja}`;
+        overlayUserEl.textContent = `${nama} • ${unitKerja}`;
+        overlayUserEl.classList.remove('hidden');
+      } else if (nama) {
+        summaryEl.textContent = nama;
+        overlayUserEl.textContent = nama;
+        overlayUserEl.classList.remove('hidden');
+      } else if (unitKerja) {
+        summaryEl.textContent = unitKerja;
+        overlayUserEl.textContent = unitKerja;
+        overlayUserEl.classList.remove('hidden');
+      } else {
+        summaryEl.textContent = 'Ketuk untuk isi Nama & Unit Kerja';
+        overlayUserEl.classList.add('hidden');
+      }
+    }
+
+    function toggleProfileForm() {
+      const fields = document.getElementById('profileFormFields');
+      const chevron = document.getElementById('profileChevron');
+      const toggleText = document.getElementById('profileToggleText');
+      const isHidden = fields.classList.contains('hidden');
+      if (isHidden) {
+        fields.classList.remove('hidden');
+        chevron.style.transform = 'rotate(180deg)';
+        toggleText.textContent = 'Tutup';
+      } else {
+        fields.classList.add('hidden');
+        chevron.style.transform = 'rotate(0deg)';
+        toggleText.textContent = 'Ubah';
+      }
+    }
+
+    function saveCustomCheckInTime() {
+      const val = document.getElementById('inputCheckInTime').value;
+      if (val) {
+        const todayKey = getTodayDateKey();
+        localStorage.setItem('bapeltan_checkin_' + todayKey, JSON.stringify({ time: val }));
+        applyCheckInLockState(true, val);
+        updateClockAndOverlays();
+      }
+    }
+
+    function applyCheckInLockState(hasCheckedIn, checkInTime = '') {
+      const btnMasuk = document.getElementById('btnModeMasuk');
+      const btnPulang = document.getElementById('btnModePulang');
+      const grid = btnMasuk ? btnMasuk.parentElement : null;
+      const notice = document.getElementById('alreadyCheckedInNotice');
+      const badge = document.getElementById('recordedCheckInBadge');
+
+      if (!btnMasuk || !btnPulang || !grid) return;
+
+      if (hasCheckedIn) {
+        btnMasuk.classList.add('hidden');
+        grid.classList.remove('grid-cols-2');
+        grid.classList.add('grid-cols-1');
+        if (notice) {
+          notice.classList.remove('hidden');
+          notice.classList.add('flex');
+        }
+        if (badge && checkInTime) {
+          badge.textContent = checkInTime;
+        }
+      } else {
+        btnMasuk.classList.remove('hidden');
+        grid.classList.remove('grid-cols-1');
+        grid.classList.add('grid-cols-2');
+        if (notice) {
+          notice.classList.add('hidden');
+          notice.classList.remove('flex');
+        }
+      }
+    }
+
+    function resetTodayCheckIn() {
+      const todayKey = getTodayDateKey();
+      localStorage.removeItem('bapeltan_checkin_' + todayKey);
+      applyCheckInLockState(false);
+      setAttendanceType('Absen Masuk');
+      showToast('Status absen masuk hari ini direset.', 'info');
+    }
+
+    // ==========================================
+    // NAVIGASI TAB & MODAL
+    // ==========================================
+    function switchTab(tab) {
+      const viewCam = document.getElementById('viewCamera');
+      const viewHist = document.getElementById('viewHistory');
+      const tabCam = document.getElementById('tabCamera');
+      const tabHist = document.getElementById('tabHistory');
+
+      if (tab === 'camera') {
+        viewCam.classList.remove('hidden');
+        viewHist.classList.add('hidden');
+        tabCam.className = 'py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 bg-[#0077E6] text-white shadow-sm transition';
+        tabHist.className = 'py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 text-slate-600 hover:bg-slate-50 transition';
+      } else {
+        viewCam.classList.add('hidden');
+        viewHist.classList.remove('hidden');
+        tabHist.className = 'py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 bg-[#0077E6] text-white shadow-sm transition';
+        tabCam.className = 'py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 text-slate-600 hover:bg-slate-50 transition';
+        renderHistoryList();
+      }
+    }
+
+    function openModal(id) {
+      document.getElementById(id).classList.remove('hidden');
+    }
+
+    function closeModal(id) {
+      document.getElementById(id).classList.add('hidden');
+    }
+
+    // ==========================================
+    // STATUS ABSENSI & PERHITUNGAN DURASI KERJA
+    // ==========================================
+    function getAttendanceThemeColor(type = STATE.attendanceType) {
+      return type === 'Absen Masuk' ? '#059669' : '#0077E6';
+    }
+
+    function setAttendanceType(type) {
+      STATE.attendanceType = type;
+      const btnMasuk = document.getElementById('btnModeMasuk');
+      const btnPulang = document.getElementById('btnModePulang');
+      const checkInBox = document.getElementById('checkInTimeBox');
+      const badge = document.getElementById('overlayStatusBadge');
+      const accentBorder = document.getElementById('overlayAccentBorder');
+      const footerBanner = document.getElementById('overlayFooterBanner');
+
+      if (type === 'Absen Masuk') {
+        btnMasuk.className = 'py-3 px-3 rounded-xl border-2 border-emerald-600 bg-emerald-600 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-sm transition active:scale-98';
+        btnPulang.className = 'py-3 px-3 rounded-xl border-2 border-slate-200 bg-white text-slate-700 font-bold text-sm flex items-center justify-center gap-2 hover:bg-slate-50 transition active:scale-98';
+        checkInBox.classList.add('opacity-60');
+        if (badge) badge.className = 'bg-emerald-600 text-white font-bold text-xs sm:text-sm px-2.5 py-1 flex items-center transition-colors';
+        if (accentBorder) accentBorder.className = 'border-l-[3px] border-emerald-600 pl-2.5 space-y-0.5 drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)] transition-colors';
+        if (footerBanner) footerBanner.className = 'bg-emerald-600 text-white px-3.5 py-2 flex items-center justify-between transition-colors';
+      } else {
+        btnPulang.className = 'py-3 px-3 rounded-xl border-2 border-[#0077E6] bg-[#0077E6] text-white font-bold text-sm flex items-center justify-center gap-2 shadow-sm transition active:scale-98';
+        btnMasuk.className = 'py-3 px-3 rounded-xl border-2 border-slate-200 bg-white text-slate-700 font-bold text-sm flex items-center justify-center gap-2 hover:bg-slate-50 transition active:scale-98';
+        checkInBox.classList.remove('opacity-60');
+        if (badge) badge.className = 'bg-[#0077E6] text-white font-bold text-xs sm:text-sm px-2.5 py-1 flex items-center transition-colors';
+        if (accentBorder) accentBorder.className = 'border-l-[3px] border-[#0077E6] pl-2.5 space-y-0.5 drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)] transition-colors';
+        if (footerBanner) footerBanner.className = 'bg-[#0077E6] text-white px-3.5 py-2 flex items-center justify-between transition-colors';
+      }
+
+      updateClockAndOverlays();
+    }
+
+    function calculateAttendanceMetrics(nowDate) {
+      const hh = String(nowDate.getHours()).padStart(2, '0');
+      const mm = String(nowDate.getMinutes()).padStart(2, '0');
+      const currentTimeStr = `${hh}:${mm}`;
+      const checkInInput = document.getElementById('inputCheckInTime').value || '06:35';
+
+      if (STATE.attendanceType === 'Absen Masuk') {
+        return {
+          currentTimeStr,
+          checkInTime: currentTimeStr,
+          durationText: ''
+        };
+      } else {
+        const [inH, inM] = checkInInput.split(':').map(Number);
+        const startTotalMins = (inH * 60) + inM;
+        const endTotalMins = (nowDate.getHours() * 60) + nowDate.getMinutes();
+
+        let diffMins = endTotalMins - startTotalMins;
+        if (diffMins < 0) diffMins += 24 * 60;
+
+        const durH = Math.floor(diffMins / 60);
+        const durM = diffMins % 60;
+
+        return {
+          currentTimeStr,
+          checkInTime: checkInInput,
+          durationText: `${durH} h ${durM} mnt`
+        };
+      }
+    }
+
+    function formatIndonesianDate(dateObj) {
+      const dayName = HARI_ID[dateObj.getDay()];
+      const dayNum = dateObj.getDate();
+      const monthName = BULAN_ID[dateObj.getMonth()];
+      const yearNum = dateObj.getFullYear();
+      return `${dayName}, ${dayNum} ${monthName} ${yearNum}`;
+    }
+
+    function updateClockAndOverlays() {
+      const now = new Date();
+      const hh = String(now.getHours()).padStart(2, '0');
+      const mm = String(now.getMinutes()).padStart(2, '0');
+      const ss = String(now.getSeconds()).padStart(2, '0');
+
+      document.getElementById('liveClockBadge').textContent = `${hh}:${mm}:${ss}`;
+      document.getElementById('overlayStatusBadge').textContent = STATE.attendanceType;
+      document.getElementById('overlayTimeBig').textContent = `${hh}:${mm}`;
+      document.getElementById('overlayDateText').textContent = formatIndonesianDate(now);
+      document.getElementById('overlayAddressText').textContent = STATE.address;
+      document.getElementById('liveVerifyCode').innerHTML = `${STATE.verificationCode} &nbsp; BAPELTAN Verified`;
+
+      const metrics = calculateAttendanceMetrics(now);
+      const leftLabel = document.getElementById('overlayLeftLabel');
+      const leftValue = document.getElementById('overlayLeftValue');
+      const rightBox = document.getElementById('overlayRightBox');
+      const footerBanner = document.getElementById('overlayFooterBanner');
+      const leftBox = document.getElementById('overlayLeftBox');
+
+      if (STATE.attendanceType === 'Absen Masuk') {
+        if (footerBanner) {
+          footerBanner.classList.add('hidden');
+          footerBanner.classList.remove('flex');
+        }
+        if (leftBox) leftBox.classList.remove('text-center');
+        leftLabel.textContent = 'Jam Masuk';
+        leftValue.textContent = metrics.currentTimeStr;
+        rightBox.classList.add('hidden');
+      } else {
+        if (footerBanner) {
+          footerBanner.classList.remove('hidden');
+          footerBanner.classList.add('flex');
+          footerBanner.classList.remove('justify-center');
+          footerBanner.classList.add('justify-between');
+        }
+        if (leftBox) leftBox.classList.remove('text-center');
+        leftLabel.textContent = 'Jam Masuk';
+        leftValue.textContent = metrics.checkInTime;
+        rightBox.classList.remove('hidden');
+        document.getElementById('overlayWorkDuration').textContent = metrics.durationText;
+      }
+    }
+
+    // ==========================================
+    // KAMERA & UNGGAH FOTO FALLBACK
+    // ==========================================
+    function updateCameraFacingUI() {
+      const btn = document.getElementById('btnSwitchCamera');
+      if (!btn) return;
+
+      if (STATE.facingMode === 'user') {
+        btn.title = 'Ganti ke Kamera Belakang';
+      } else {
+        btn.title = 'Ganti ke Kamera Depan';
+      }
+    }
+
+    // Memantau status permission kamera & memicu akses otomatis saat tab/gesture aktif
+    async function checkCameraPermissionState() {
+      try {
+        if (!navigator.permissions || !navigator.permissions.query) return 'unknown';
+        const status = await navigator.permissions.query({ name: 'camera' });
+        const syncPermissionLabel = () => {
+          const labelEl = document.getElementById('cameraPermissionLabel');
+          const btnEl = document.getElementById('btnAllowBrowserCamera');
+          if (!labelEl || !btnEl) return;
+          if (status.state === 'granted') {
+            labelEl.textContent = 'Kamera Diizinkan';
+            btnEl.className = 'px-2.5 py-1 rounded-full bg-emerald-600/80 text-white text-[10px] font-bold flex items-center gap-1 transition active:scale-95';
+          } else if (status.state === 'denied') {
+            labelEl.textContent = 'Buka Izin Browser';
+            btnEl.className = 'px-2.5 py-1 rounded-full bg-rose-600/90 hover:bg-rose-500 text-white text-[10px] font-bold flex items-center gap-1 transition active:scale-95';
+          } else {
+            labelEl.textContent = 'Izinkan Kamera';
+            btnEl.className = 'px-2.5 py-1 rounded-full bg-amber-500/90 hover:bg-amber-400 text-slate-950 text-[10px] font-extrabold flex items-center gap-1 transition active:scale-95';
+          }
+        };
+        syncPermissionLabel();
+        status.onchange = () => {
+          syncPermissionLabel();
+          if (status.state === 'granted') {
+            requestAlwaysAllowCamera(null, { silent: true });
+          }
+        };
+        return status.state;
+      } catch (e) {
+        return 'unknown';
+      }
+    }
+
+    async function allowBrowserCameraNow() {
+      const permState = await checkCameraPermissionState();
+      if (permState === 'denied') {
+        document.getElementById('cameraFallbackUI').classList.remove('hidden');
+        document.getElementById('cameraErrorMsg').textContent =
+          'Izin kamera diblokir di pengaturan browser. Ketuk ikon kunci/pengaturan di bilah alamat browser, aktifkan Kamera -> Izinkan, lalu ketuk Coba Lagi.';
+        showToast('Aktifkan izin Kamera di pengaturan situs browser Anda.', 'error');
+        return;
+      }
+      showToast('Meminta izin kamera browser...', 'info');
+      await requestAlwaysAllowCamera(STATE.facingMode || 'user', { silent: false });
+      await checkCameraPermissionState();
+    }
+
+    function bindAlwaysAllowCameraListeners() {
+      if (STATE.autoCameraRetryBound) return;
+      STATE.autoCameraRetryBound = true;
+
+      checkCameraPermissionState();
+
+      const resumeCameraIfNeeded = () => {
+        const viewCam = document.getElementById('viewCamera');
+        const isCameraTabActive = viewCam && !viewCam.classList.contains('hidden');
+        const hasActiveStream = STATE.stream && STATE.stream.getVideoTracks().some(t => t.readyState === 'live');
+        if (isCameraTabActive && !STATE.uploadedImageObj && !hasActiveStream) {
+          requestAlwaysAllowCamera(null, { silent: true });
+        }
+      };
+
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+          resumeCameraIfNeeded();
+        }
+      });
+
+      window.addEventListener('focus', resumeCameraIfNeeded);
+
+      // Pada beberapa browser HP (terutama iOS Safari), interaksi sentuh pertama mempermudah aktivasi kamera
+      const onFirstGesture = () => {
+        resumeCameraIfNeeded();
+      };
+      window.addEventListener('pointerdown', onFirstGesture, { passive: true });
+      window.addEventListener('touchstart', onFirstGesture, { passive: true });
+    }
+
+    async function requestAlwaysAllowCamera(requestedFacing = null, options = {}) {
+      const { silent = false } = options;
+      if (STATE.isStartingCamera) return;
+      STATE.isStartingCamera = true;
+      try {
+        await startCamera(requestedFacing, { silent });
+      } finally {
+        STATE.isStartingCamera = false;
+      }
+    }
+
+    async function startCamera(requestedFacing = null, options = {}) {
+      const { silent = false } = options;
+      const video = document.getElementById('videoPreview');
+      const fallbackUI = document.getElementById('cameraFallbackUI');
+      const uploadedImg = document.getElementById('uploadedFallbackImg');
+      const targetFacing = requestedFacing || STATE.facingMode || 'user';
+
+      if (STATE.stream) {
+        STATE.stream.getTracks().forEach(track => track.stop());
+      }
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        fallbackUI.classList.remove('hidden');
+        return;
+      }
+
+      try {
+        // Konfigurasi ramah Android & iPhone (iOS Safari kadang menolak resolusi ketat)
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+        const constraints = isIOS
+          ? {
+              video: {
+                facingMode: targetFacing
+              },
+              audio: false
+            }
+          : {
+              video: {
+                facingMode: { ideal: targetFacing },
+                width: { ideal: 1080 },
+                height: { ideal: 1440 }
+              },
+              audio: false
+            };
+
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        STATE.stream = stream;
+        STATE.facingMode = targetFacing;
+        STATE.uploadedImageObj = null;
+
+        // Jaga agar stream kamera tetap aktif dan otomatis dipulihkan bila track berhenti
+        stream.getVideoTracks().forEach((track) => {
+          track.onended = () => {
+            const viewCam = document.getElementById('viewCamera');
+            if (viewCam && !viewCam.classList.contains('hidden') && !STATE.uploadedImageObj) {
+              requestAlwaysAllowCamera(STATE.facingMode, { silent: true });
+            }
+          };
+        });
+
+        // Kamera depan default di-mirror, kamera belakang tidak di-mirror
+        STATE.isMirrored = targetFacing === 'user';
+        if (STATE.isMirrored) {
+          video.classList.add('mirror-video');
+        } else {
+          video.classList.remove('mirror-video');
+        }
+        updateCameraFacingUI();
+
+        video.setAttribute('playsinline', 'true');
+        video.setAttribute('webkit-playsinline', 'true');
+        video.muted = true;
+        video.srcObject = stream;
+        video.classList.remove('hidden');
+        uploadedImg.classList.add('hidden');
+        fallbackUI.classList.add('hidden');
+
+        if (typeof video.play === 'function') {
+          await video.play().catch(() => {});
+        }
+      } catch (err) {
+        console.warn('Kamera gagal diakses:', err);
+        document.getElementById('cameraErrorMsg').textContent =
+          'Akses kamera di browser belum diizinkan (' + (err.name || 'Error') + '). Pilih "Izinkan" pada prompt browser atau buka pengaturan situs browser -> Kamera -> Izinkan, lalu ketuk Coba Lagi.';
+        if (!silent || err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+          fallbackUI.classList.remove('hidden');
+        }
+        await checkCameraPermissionState();
+      }
+    }
+
+    async function switchCameraFacing() {
+      const nextFacing = STATE.facingMode === 'user' ? 'environment' : 'user';
+      showToast(nextFacing === 'environment' ? 'Mengalihkan ke Kamera Belakang...' : 'Mengalihkan ke Kamera Depan...', 'info');
+      await requestAlwaysAllowCamera(nextFacing);
+    }
+
+    function handleFileUpload(event) {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function (e) {
+        const img = new Image();
+        img.onload = function () {
+          STATE.uploadedImageObj = img;
+          const uploadedImgEl = document.getElementById('uploadedFallbackImg');
+          uploadedImgEl.src = e.target.result;
+          uploadedImgEl.classList.remove('hidden');
+          document.getElementById('videoPreview').classList.add('hidden');
+          document.getElementById('cameraFallbackUI').classList.add('hidden');
+          showToast('Foto berhasil dimuat, siap dijepret!', 'success');
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    // ==========================================
+    // GEOLOCATION GPS & REVERSE GEOCODING
+    // ==========================================
+    function refreshLocation(manualTrigger = false) {
+      const coordsBadge = document.getElementById('gpsCoordsBadge');
+      const dot = document.getElementById('gpsIndicatorDot');
+
+      if (!navigator.geolocation) {
+        coordsBadge.textContent = 'GPS Tidak Didukung';
+        if (manualTrigger) showToast('Perangkat tidak mendukung GPS.', 'error');
+        return;
+      }
+
+      coordsBadge.textContent = 'Mencari GPS...';
+      dot.className = 'w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping absolute top-2 right-2';
+
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          STATE.coords = {
+            lat,
+            lng,
+            accuracy: Math.round(pos.coords.accuracy || 10),
+            isLive: true
+          };
+
+          coordsBadge.textContent = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+          dot.className = 'w-2.5 h-2.5 rounded-full bg-emerald-400 absolute top-2 right-2';
+
+          await reverseGeocode(lat, lng);
+          drawMiniMap(document.getElementById('liveMiniMapCanvas'), lat, lng, STATE.roadName, STATE.areaName);
+          if (manualTrigger) showToast('Lokasi GPS berhasil diperbarui!', 'success');
+        },
+        (err) => {
+          console.warn('Geolocation error:', err);
+          coordsBadge.textContent = 'GPS Default/Offline';
+          dot.className = 'w-2.5 h-2.5 rounded-full bg-rose-400 absolute top-2 right-2';
+          document.getElementById('cardAddressDisplay').textContent = STATE.address;
+          if (manualTrigger) {
+            showToast('Gagal mengambil GPS otomatis. Anda bisa edit alamat secara manual.', 'error');
+          }
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    }
+
+    async function reverseGeocode(lat, lng) {
+      try {
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&accept-language=id`
+        );
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        const addr = data.address || {};
+
+        const desa = addr.village || addr.suburb || addr.hamlet || addr.neighbourhood || '';
+        const kec = addr.city_district || addr.district || addr.subdistrict || '';
+        const kab = addr.county || addr.city || addr.town || '';
+        const prov = addr.state || '';
+        const kodepos = addr.postcode || '';
+
+        STATE.roadName = addr.road || desa || 'Jl. Utama';
+        STATE.areaName = kec || kab || 'Lokasi Tugas';
+
+        const parts = [];
+        if (desa) parts.push(desa);
+        if (kec) parts.push(kec.toLowerCase().startsWith('kec') ? kec : `Kec. ${kec}`);
+        if (kab) parts.push(kab);
+        if (prov || kodepos) parts.push(`${prov} ${kodepos}`.trim());
+
+        const formatted = parts.length > 0 ? parts.join(', ') : (data.display_name || STATE.address);
+        STATE.address = formatted;
+        document.getElementById('cardAddressDisplay').textContent = formatted;
+        document.getElementById('inputManualAddress').value = formatted;
+        updateClockAndOverlays();
+      } catch (e) {
+        console.warn('Reverse geocoding fallback:', e);
+        document.getElementById('cardAddressDisplay').textContent = STATE.address;
+      }
+    }
+
+    function toggleEditAddress() {
+      const box = document.getElementById('editAddressBox');
+      const input = document.getElementById('inputManualAddress');
+      if (box.classList.contains('hidden')) {
+        input.value = STATE.address;
+        box.classList.remove('hidden');
+      } else {
+        box.classList.add('hidden');
+      }
+    }
+
+    function updateManualAddress() {
+      const val = document.getElementById('inputManualAddress').value.trim();
+      if (val) {
+        STATE.address = val;
+        document.getElementById('cardAddressDisplay').textContent = val;
+        updateClockAndOverlays();
+      }
+    }
+
+    // ==========================================
+    // RENDER PETA MINI (CANVAS VECTOR STYLE TIMEMARK)
+    // ==========================================
+    function drawMiniMap(canvas, lat, lng, roadLabel, areaLabel) {
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const w = canvas.width;
+      const h = canvas.height;
+
+      // Background dasar peta (krem/hijau muda seperti Google Maps)
+      ctx.fillStyle = '#f2efe9';
+      ctx.fillRect(0, 0, w, h);
+
+      // Area hijau taman/sawah berdasarkan hash koordinat
+      const seed = Math.abs(Math.sin(lat * 1000 + lng * 1000));
+      ctx.fillStyle = '#ccebc5';
+      ctx.beginPath();
+      ctx.moveTo(w * 0.45, 0);
+      ctx.lineTo(w, 0);
+      ctx.lineTo(w, h * (0.55 + seed * 0.2));
+      ctx.lineTo(w * 0.35, h * 0.45);
+      ctx.closePath();
+      ctx.fill();
+
+      // Aliran sungai biru muda
+      ctx.strokeStyle = '#9ecae1';
+      ctx.lineWidth = w * 0.035;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(w * 0.15, h * 0.32);
+      ctx.quadraticCurveTo(w * 0.55, h * 0.42, w * 0.92, h * 0.12);
+      ctx.stroke();
+
+      // Jaringan jalan putih & kuning
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = w * 0.055;
+      ctx.beginPath();
+      // Jalan vertikal utama
+      ctx.moveTo(w * 0.48, 0);
+      ctx.lineTo(w * 0.46, h);
+      // Jalan horizontal
+      ctx.moveTo(0, h * 0.62);
+      ctx.lineTo(w, h * 0.58);
+      // Jalan cabang
+      ctx.moveTo(0, h * 0.25);
+      ctx.lineTo(w * 0.48, h * 0.35);
+      ctx.stroke();
+
+      // Jalan arteri kuning tipis
+      ctx.strokeStyle = '#fed976';
+      ctx.lineWidth = w * 0.03;
+      ctx.beginPath();
+      ctx.moveTo(0, h * 0.85);
+      ctx.lineTo(w, h * 0.80);
+      ctx.stroke();
+
+      // Label nama area & jalan
+      ctx.fillStyle = '#475569';
+      ctx.font = `600 ${Math.round(w * 0.068)}px Inter, sans-serif`;
+      ctx.fillText((areaLabel || 'Lokasi').slice(0, 14), w * 0.06, h * 0.81);
+
+      ctx.save();
+      ctx.translate(w * 0.43, h * 0.45);
+      ctx.rotate(Math.PI / 2);
+      ctx.fillStyle = '#334155';
+      ctx.font = `600 ${Math.round(w * 0.055)}px Inter, sans-serif`;
+      ctx.fillText((roadLabel || 'Jl. Utama').slice(0, 14), 0, 0);
+      ctx.restore();
+
+      // Kerucut arah pandang hijau di titik tengah
+      const cx = w * 0.48;
+      const cy = h * 0.46;
+      const grad = ctx.createRadialGradient(cx, cy, 2, cx, cy, w * 0.22);
+      grad.addColorStop(0, 'rgba(34, 197, 94, 0.65)');
+      grad.addColorStop(1, 'rgba(34, 197, 94, 0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.arc(cx, cy, w * 0.22, Math.PI * 0.85, Math.PI * 1.25);
+      ctx.closePath();
+      ctx.fill();
+
+      // Pin Lokasi Biru (Teardrop)
+      const pinR = w * 0.068;
+      const pinY = cy - pinR * 1.5;
+      ctx.fillStyle = '#0077E6';
+      ctx.beginPath();
+      ctx.arc(cx, pinY, pinR, Math.PI * 0.8, Math.PI * 2.2);
+      ctx.lineTo(cx, cy);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Titik putih di tengah pin
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(cx, pinY, pinR * 0.38, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Label kecil GPS Map di kiri bawah kotak peta
+      ctx.font = `800 ${Math.round(w * 0.065)}px Inter, sans-serif`;
+      ctx.fillStyle = '#2563eb';
+      ctx.fillText('GPS', w * 0.06, h * 0.94);
+      ctx.fillStyle = '#dc2626';
+      ctx.fillText('Map', w * 0.23, h * 0.94);
+    }
+
+    // ==========================================
+    // GENERATOR FOTO WATERMARK HIGH-RES (CANVAS)
+    // ==========================================
+    function wrapCanvasText(ctx, text, maxWidth, maxLines = 2) {
+      const words = text.split(' ');
+      const lines = [];
+      let currentLine = '';
+
+      for (let i = 0; i < words.length; i++) {
+        const testLine = currentLine ? `${currentLine} ${words[i]}` : words[i];
+        const width = ctx.measureText(testLine).width;
+        if (width > maxWidth && currentLine) {
+          lines.push(currentLine);
+          currentLine = words[i];
+          if (lines.length === maxLines) break;
+        } else {
+          currentLine = testLine;
+        }
+      }
+      if (currentLine && lines.length < maxLines) {
+        lines.push(currentLine);
+      }
+      return lines;
+    }
+
+    function drawRoundedRect(ctx, x, y, width, height, radius) {
+      ctx.beginPath();
+      ctx.moveTo(x + radius, y);
+      ctx.lineTo(x + width - radius, y);
+      ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+      ctx.lineTo(x + width, y + height - radius);
+      ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+      ctx.lineTo(x + radius, y + height);
+      ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+      ctx.lineTo(x, y + radius);
+      ctx.quadraticCurveTo(x, y, x + radius, y);
+      ctx.closePath();
+    }
+
+    function captureAttendancePhoto() {
+      const video = document.getElementById('videoPreview');
+      const canvas = document.getElementById('exportCanvas');
+      const ctx = canvas.getContext('2d');
+
+      const W = 1080;
+      const H = 1440; // Rasio 3:4 Portrait HD
+      canvas.width = W;
+      canvas.height = H;
+
+      // 1. Gambar Sumber Foto (Video Stream atau Uploaded Image atau Placeholder)
+      ctx.fillStyle = '#1e293b';
+      ctx.fillRect(0, 0, W, H);
+
+      if (STATE.uploadedImageObj) {
+        drawImageCover(ctx, STATE.uploadedImageObj, 0, 0, W, H, false);
+      } else if (video && video.readyState >= 2 && !video.classList.contains('hidden')) {
+        drawImageCover(ctx, video, 0, 0, W, H, STATE.isMirrored);
+      } else {
+        showToast('Kamera belum aktif. Silakan izinkan kamera atau pilih foto dari galeri.', 'error');
+        return;
+      }
+
+      const now = new Date();
+      const metrics = calculateAttendanceMetrics(now);
+      const dateStr = formatIndonesianDate(now);
+      const verifyCode = STATE.verificationCode;
+      const themeColor = getAttendanceThemeColor(STATE.attendanceType);
+
+      // 2. Gambar Peta Mini di Pojok Kiri Atas
+      const mapBoxW = 210;
+      const mapBoxH = 210;
+      const mapBoxX = 36;
+      const mapBoxY = 36;
+      const tempMapCanvas = document.createElement('canvas');
+      tempMapCanvas.width = mapBoxW;
+      tempMapCanvas.height = mapBoxH;
+      drawMiniMap(tempMapCanvas, STATE.coords.lat, STATE.coords.lng, STATE.roadName, STATE.areaName);
+
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,0.35)';
+      ctx.shadowBlur = 12;
+      ctx.shadowOffsetY = 4;
+      drawRoundedRect(ctx, mapBoxX, mapBoxY, mapBoxW, mapBoxH, 22);
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+      ctx.restore();
+
+      ctx.save();
+      drawRoundedRect(ctx, mapBoxX + 4, mapBoxY + 4, mapBoxW - 8, mapBoxH - 8, 18);
+      ctx.clip();
+      ctx.drawImage(tempMapCanvas, mapBoxX + 4, mapBoxY + 4, mapBoxW - 8, mapBoxH - 8);
+      ctx.restore();
+
+      // 3. Branding Pojok Kanan Atas: "BAPELTAN Absensi" + "Foto 100% akurat" + Logo
+      const logoSize = 84;
+      const logoCenterX = W - 36 - (logoSize / 2);
+      const logoCenterY = 82;
+      const textRightX = STATE.logoImageObj ? (W - 36 - logoSize - 16) : (W - 36);
+
+      ctx.save();
+      ctx.textAlign = 'right';
+      ctx.shadowColor = 'rgba(0,0,0,0.8)';
+      ctx.shadowBlur = 10;
+      ctx.shadowOffsetY = 2;
+
+      ctx.font = '800 44px Inter, sans-serif';
+      const subBrandWidth = ctx.measureText('Absensi').width;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText('Absensi', textRightX, 78);
+
+      ctx.fillStyle = '#facc15'; // Kuning Emas
+      ctx.fillText('BAPELTAN ', textRightX - subBrandWidth, 78);
+
+      ctx.font = '500 25px Inter, sans-serif';
+      ctx.fillStyle = 'rgba(255,255,255,0.95)';
+      ctx.fillText('Foto 100% akurat', textRightX, 114);
+      ctx.restore();
+
+      if (STATE.logoImageObj) {
+        ctx.save();
+        ctx.shadowColor = 'rgba(0,0,0,0.45)';
+        ctx.shadowBlur = 10;
+        ctx.shadowOffsetY = 3;
+        ctx.beginPath();
+        ctx.arc(logoCenterX, logoCenterY, logoSize / 2, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255,255,255,0.96)';
+        ctx.fill();
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = '#ffffff';
+        ctx.stroke();
+        ctx.restore();
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(logoCenterX, logoCenterY, (logoSize / 2) - 4, 0, Math.PI * 2);
+        ctx.clip();
+        drawImageCover(
+          ctx,
+          STATE.logoImageObj,
+          logoCenterX - (logoSize / 2) + 4,
+          logoCenterY - (logoSize / 2) + 4,
+          logoSize - 8,
+          logoSize - 8,
+          false
+        );
+        ctx.restore();
+      }
+
+      // 4. Teks Verifikasi Vertikal di Sisi Kanan Tengah
+      ctx.save();
+      ctx.translate(W - 18, H * 0.50);
+      ctx.rotate(-Math.PI / 2);
+      ctx.textAlign = 'center';
+      ctx.font = '600 18px monospace';
+      ctx.fillStyle = 'rgba(255,255,255,0.82)';
+      ctx.shadowColor = 'rgba(0,0,0,0.85)';
+      ctx.shadowBlur = 4;
+      ctx.fillText(`${verifyCode}   BAPELTAN Verified`, 0, 0);
+      ctx.restore();
+
+      const isPulang = STATE.attendanceType === 'Absen Pulang';
+      const footerH = isPulang ? 132 : 0;
+      const footerY = H - footerH;
+
+      // Gradient gelap di bagian bawah agar teks terbaca jelas
+      const bottomGrad = ctx.createLinearGradient(0, H - 520, 0, footerY);
+      bottomGrad.addColorStop(0, 'rgba(0,0,0,0)');
+      bottomGrad.addColorStop(1, 'rgba(0,0,0,0.68)');
+      ctx.fillStyle = bottomGrad;
+      ctx.fillRect(0, H - 520, W, 520 - footerH);
+
+      // 5. Baris Verifikasi Shield di atas Footer
+      const shieldY = footerY - 26;
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,0.8)';
+      ctx.shadowBlur = 6;
+      ctx.font = '500 22px Inter, sans-serif';
+      ctx.fillStyle = 'rgba(255,255,255,0.92)';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('✓  BAPELTAN Absensi menjamin keaslian waktu', 38, shieldY);
+      ctx.restore();
+
+      const namaPegawai = document.getElementById('inputNama').value.trim();
+      const unitKerjaPegawai = document.getElementById('inputUnitKerja').value.trim();
+      const userLineText = [namaPegawai, unitKerjaPegawai].filter(Boolean).join(' • ');
+
+      // Wrap teks alamat maksimal 2 baris
+      ctx.font = '500 29px Inter, sans-serif';
+      const rightLogoSize = STATE.logoImageObj ? 124 : 0;
+      const rightLogoGap = STATE.logoImageObj ? 24 : 0;
+      const maxTextWidth = W - 110 - rightLogoSize - rightLogoGap;
+      const addressLines = wrapCanvasText(ctx, STATE.address, maxTextWidth, 2);
+
+      const lineHeight = 38;
+      let textBlockHeight = 42 + (addressLines.length * lineHeight);
+      if (userLineText) textBlockHeight += 36;
+
+      const blockBottomY = shieldY - 24;
+      const blockTopY = blockBottomY - textBlockHeight;
+
+      // Logo di sebelah kanan keterangan absen
+      if (STATE.logoImageObj) {
+        const attLogoCenterX = W - 36 - (rightLogoSize / 2);
+        const attLogoCenterY = blockTopY + (textBlockHeight / 2);
+
+        ctx.save();
+        ctx.shadowColor = 'rgba(0,0,0,0.45)';
+        ctx.shadowBlur = 12;
+        ctx.shadowOffsetY = 3;
+        ctx.beginPath();
+        ctx.arc(attLogoCenterX, attLogoCenterY, rightLogoSize / 2, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255,255,255,0.96)';
+        ctx.fill();
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = '#ffffff';
+        ctx.stroke();
+        ctx.restore();
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(attLogoCenterX, attLogoCenterY, (rightLogoSize / 2) - 5, 0, Math.PI * 2);
+        ctx.clip();
+        drawImageCover(
+          ctx,
+          STATE.logoImageObj,
+          attLogoCenterX - (rightLogoSize / 2) + 5,
+          attLogoCenterY - (rightLogoSize / 2) + 5,
+          rightLogoSize - 10,
+          rightLogoSize - 10,
+          false
+        );
+        ctx.restore();
+      }
+
+      // Garis vertikal di kiri sesuai jenis absensi (hijau masuk / biru pulang)
+      ctx.fillStyle = themeColor;
+      ctx.fillRect(36, blockTopY + 4, 8, textBlockHeight - 4);
+
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,0.85)';
+      ctx.shadowBlur = 8;
+      ctx.shadowOffsetY = 2;
+
+      let cursorY = blockTopY + 34;
+      // Tanggal Lengkap
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '700 32px Inter, sans-serif';
+      ctx.fillText(dateStr, 58, cursorY);
+      cursorY += 40;
+
+      // Alamat Lokasi
+      ctx.font = '500 28px Inter, sans-serif';
+      ctx.fillStyle = 'rgba(255,255,255,0.96)';
+      addressLines.forEach(line => {
+        ctx.fillText(line, 58, cursorY);
+        cursorY += lineHeight;
+      });
+
+      // Nama Pegawai & Unit Kerja (jika diisi)
+      if (userLineText) {
+        ctx.font = '700 26px Inter, sans-serif';
+        ctx.fillStyle = '#fde047'; // Kuning lembut
+        ctx.fillText(userLineText, 58, cursorY + 2);
+      }
+      ctx.restore();
+
+      // 6. Badge Status ("Absen Masuk" / "Absen Pulang") + Kotak Putih Jam Besar ("16:54")
+      const badgeH = 66;
+      const badgeY = blockTopY - badgeH - 22;
+      const badgeX = 36;
+
+      ctx.font = '700 31px Inter, sans-serif';
+      const statusTextWidth = ctx.measureText(STATE.attendanceType).width;
+      const blueBoxW = statusTextWidth + 36;
+
+      ctx.font = '900 44px Inter, sans-serif';
+      const timeTextWidth = ctx.measureText(metrics.currentTimeStr).width;
+      const whiteBoxW = timeTextWidth + 34;
+
+      const totalBadgeW = blueBoxW + whiteBoxW;
+
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,0.45)';
+      ctx.shadowBlur = 14;
+      ctx.shadowOffsetY = 4;
+      drawRoundedRect(ctx, badgeX, badgeY, totalBadgeW, badgeH, 14);
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+      ctx.restore();
+
+      ctx.save();
+      drawRoundedRect(ctx, badgeX, badgeY, totalBadgeW, badgeH, 14);
+      ctx.clip();
+
+      // Kotak Warna Kiri (Hijau Absen Masuk / Biru Absen Pulang)
+      ctx.fillStyle = themeColor;
+      ctx.fillRect(badgeX, badgeY, blueBoxW, badgeH);
+
+      // Kotak Putih Kanan
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(badgeX + blueBoxW, badgeY, whiteBoxW, badgeH);
+
+      // Teks Badge & Jam Besar
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '700 31px Inter, sans-serif';
+      ctx.fillText(STATE.attendanceType, badgeX + 18, badgeY + (badgeH / 2) + 1);
+
+      ctx.fillStyle = '#0f172a';
+      ctx.font = '900 44px Inter, sans-serif';
+      ctx.fillText(metrics.currentTimeStr, badgeX + blueBoxW + 17, badgeY + (badgeH / 2) + 2);
+      ctx.restore();
+
+      // 7. Banner Footer Solid hanya untuk Absen Pulang (kotak hijau Absen Masuk dihilangkan)
+      if (isPulang) {
+        ctx.fillStyle = themeColor;
+        ctx.fillRect(0, footerY, W, footerH);
+
+        ctx.fillStyle = 'rgba(255,255,255,0.88)';
+        ctx.font = '500 25px Inter, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'alphabetic';
+        ctx.fillText('Jam Masuk', 38, footerY + 46);
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '800 46px Inter, sans-serif';
+        ctx.fillText(metrics.checkInTime, 38, footerY + 108);
+
+        ctx.fillStyle = 'rgba(255,255,255,0.88)';
+        ctx.font = '500 25px Inter, sans-serif';
+        ctx.fillText('Lama Waktu Kerja', W * 0.50, footerY + 46);
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '800 46px Inter, sans-serif';
+        ctx.fillText(metrics.durationText, W * 0.50, footerY + 108);
+      }
+
+      // Export Final JPEG
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+      STATE.currentResultDataUrl = dataUrl;
+
+      const record = {
+        id: Date.now(),
+        nama: namaPegawai || 'Pegawai BAPELTAN',
+        unitKerja: unitKerjaPegawai || '-',
+        jenis: STATE.attendanceType,
+        tanggal: dateStr,
+        jam: metrics.currentTimeStr,
+        jamMasuk: metrics.checkInTime,
+        durasi: metrics.durationText,
+        alamat: STATE.address,
+        koordinat: `${STATE.coords.lat.toFixed(6)}, ${STATE.coords.lng.toFixed(6)}`,
+        kodeVerifikasi: verifyCode,
+        imageDataUrl: dataUrl
+      };
+
+      STATE.currentResultRecord = record;
+      saveRecordToHistory(record);
+
+      // Jika Absen Masuk, simpan otomatis jam masuk hari ini agar menu langsung beralih ke Absen Pulang
+      if (STATE.attendanceType === 'Absen Masuk') {
+        const todayKey = getTodayDateKey();
+        localStorage.setItem('bapeltan_checkin_' + todayKey, JSON.stringify({ time: metrics.currentTimeStr }));
+        document.getElementById('inputCheckInTime').value = metrics.currentTimeStr;
+        applyCheckInLockState(true, metrics.currentTimeStr);
+      }
+
+      // Tampilkan modal hasil
+      document.getElementById('finalWatermarkedImg').src = dataUrl;
+      openModal('resultModal');
+      showToast(`${STATE.attendanceType} berhasil direkam!`, 'success');
+    }
+
+    function drawImageCover(ctx, source, x, y, w, h, mirror = false) {
+      const srcW = source.videoWidth || source.naturalWidth || source.width;
+      const srcH = source.videoHeight || source.naturalHeight || source.height;
+      if (!srcW || !srcH) return;
+
+      const srcRatio = srcW / srcH;
+      const dstRatio = w / h;
+      let drawW, drawH, offsetX, offsetY;
+
+      if (srcRatio > dstRatio) {
+        drawH = h;
+        drawW = h * srcRatio;
+        offsetX = x + (w - drawW) / 2;
+        offsetY = y;
+      } else {
+        drawW = w;
+        drawH = w / srcRatio;
+        offsetX = x;
+        offsetY = y + (h - drawH) / 2;
+      }
+
+      ctx.save();
+      if (mirror) {
+        ctx.translate(x + w, y);
+        ctx.scale(-1, 1);
+        ctx.drawImage(source, offsetX - x, offsetY - y, drawW, drawH);
+      } else {
+        ctx.drawImage(source, offsetX, offsetY, drawW, drawH);
+      }
+      ctx.restore();
+    }
+
+    // ==========================================
+    // INTEGRASI SHARE KE WHATSAPP & DOWNLOAD
+    // ==========================================
+    function buildWhatsAppCaption(rec) {
+      const nama = (rec.nama || 'Pegawai').trim();
+      const keterangan = (rec.jenis || 'Absen Masuk').trim();
+      return `${nama}, ${keterangan}`;
+    }
+
+    async function shareToWhatsApp() {
+      const rec = STATE.currentResultRecord;
+      if (!rec || !STATE.currentResultDataUrl) return;
+
+      const caption = buildWhatsAppCaption(rec);
+      const fileName = `BAPELTAN_${rec.jenis.replace(/\s+/g, '_')}_${rec.jam.replace(':', '')}.jpg`;
+
+      try {
+        // Konversi DataURL menjadi File Blob untuk Web Share API (Mobile Android/iOS)
+        const response = await fetch(STATE.currentResultDataUrl);
+        const blob = await response.blob();
+        const file = new File([blob], fileName, { type: 'image/jpeg' });
+
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            files: [file],
+            title: `BAPELTAN Absensi - ${rec.jenis}`,
+            text: caption
+          });
+          showToast('Berhasil dibagikan ke WhatsApp!', 'success');
+          return;
+        }
+      } catch (err) {
+        if (err && err.name === 'AbortError') return;
+        console.warn('Web Share API file tidak didukung, beralih ke fallback:', err);
+      }
+
+      // Fallback untuk Desktop / Browser yang tidak mendukung Web Share File
+      downloadCurrentPhoto();
+      showToast('Foto diunduh! Membuka WhatsApp Web...', 'info');
+      setTimeout(() => {
+        shareTextOnlyWhatsApp();
+      }, 700);
+    }
+
+    function shareTextOnlyWhatsApp() {
+      const rec = STATE.currentResultRecord;
+      if (!rec) return;
+      const caption = encodeURIComponent(buildWhatsAppCaption(rec));
+      window.open(`https://api.whatsapp.com/send?text=${caption}`, '_blank');
+    }
+
+    function downloadCurrentPhoto() {
+      const rec = STATE.currentResultRecord;
+      if (!STATE.currentResultDataUrl || !rec) return;
+
+      const link = document.createElement('a');
+      const cleanDate = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      const cleanTime = rec.jam.replace(':', '');
+      link.download = `BAPELTAN_${rec.jenis.replace(/\s+/g, '_')}_${cleanDate}_${cleanTime}.jpg`;
+      link.href = STATE.currentResultDataUrl;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      showToast('Foto tersimpan di perangkat!', 'success');
+    }
+
+    // ==========================================
+    // RIWAYAT LOKAL
+    // ==========================================
+    function saveRecordToHistory(record) {
+      STATE.history.unshift(record);
+      if (STATE.history.length > 20) {
+        STATE.history = STATE.history.slice(0, 20);
+      }
+      try {
+        localStorage.setItem('bapeltan_history', JSON.stringify(STATE.history));
+      } catch (e) {
+        // Jika quota penuh, simpan 5 terakhir saja
+        STATE.history = STATE.history.slice(0, 5);
+        localStorage.setItem('bapeltan_history', JSON.stringify(STATE.history));
+      }
+      renderHistoryList();
+    }
+
+    function renderHistoryList() {
+      const container = document.getElementById('historyListContainer');
+      const badge = document.getElementById('historyBadge');
+
+      if (STATE.history.length > 0) {
+        badge.textContent = STATE.history.length;
+        badge.classList.remove('hidden');
+      } else {
+        badge.classList.add('hidden');
+      }
+
+      if (STATE.history.length === 0) {
+        container.innerHTML = `
+          <div class="bg-white rounded-2xl p-8 text-center border border-slate-200/80">
+            <div class="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
+              <i data-lucide="camera-off" class="w-6 h-6"></i>
+            </div>
+            <p class="text-sm font-bold text-slate-700">Belum Ada Riwayat Absensi</p>
+            <p class="text-xs text-slate-500 mt-1">Foto absen masuk & pulang Anda akan tersimpan otomatis di sini.</p>
+          </div>
+        `;
+        lucide.createIcons();
+        return;
+      }
+
+      container.innerHTML = STATE.history.map((item, idx) => `
+        <div class="bg-white rounded-2xl p-3 shadow-sm border border-slate-200/80 flex gap-3 items-center">
+          <img src="${item.imageDataUrl}" onclick="openHistoryItem(${idx})" alt="Thumb" class="w-16 h-20 rounded-xl object-cover bg-slate-900 cursor-pointer border border-slate-200 shrink-0" />
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-1.5 mb-1">
+              <span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold ${item.jenis === 'Absen Masuk' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-[#0077E6]'}">
+                ${item.jenis}
+              </span>
+              <span class="text-xs font-black text-slate-800">${item.jam}</span>
+            </div>
+            <p class="text-xs font-bold text-slate-800 truncate">${item.nama}</p>
+            <p class="text-[11px] text-slate-500 truncate">${item.unitKerja && item.unitKerja !== '-' ? item.unitKerja : item.tanggal}</p>
+            <p class="text-[10px] text-slate-400 truncate mt-0.5">${item.jenis === 'Absen Masuk' ? `Jam Masuk: ${item.jam}` : `Masuk ${item.jamMasuk || '-'} • Lama Kerja: ${item.durasi}`}</p>
+          </div>
+          <button onclick="openHistoryItem(${idx})" class="p-2.5 rounded-xl bg-[#25D366]/15 hover:bg-[#25D366]/25 text-emerald-700 transition shrink-0" title="Lihat & Share WA">
+            <i data-lucide="share-2" class="w-4 h-4"></i>
+          </button>
+        </div>
+      `).join('');
+      lucide.createIcons();
+    }
+
+    function openHistoryItem(index) {
+      const item = STATE.history[index];
+      if (!item) return;
+      STATE.currentResultRecord = item;
+      STATE.currentResultDataUrl = item.imageDataUrl;
+      document.getElementById('finalWatermarkedImg').src = item.imageDataUrl;
+      openModal('resultModal');
+    }
+
+    function clearAllHistory() {
+      STATE.history = [];
+      localStorage.removeItem('bapeltan_history');
+      renderHistoryList();
+      showToast('Semua riwayat absensi telah dihapus.', 'info');
+    }
+  </script>
+</body>
+</html>
